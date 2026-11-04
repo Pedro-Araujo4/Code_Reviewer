@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +25,10 @@ INPUT_DIR = PROJECT_ROOT / "input"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
 MAX_FILE_SIZE_MB = 1
+DEFAULT_API_MAX_ATTEMPTS = 4
+DEFAULT_API_RETRY_INITIAL_DELAY_S = 1.0
+DEFAULT_API_RETRY_MAX_DELAY_S = 30.0
+RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 INSTRUCTION_FILES = (
     "agents/reviewer.md",
@@ -133,6 +139,87 @@ def read_source(path: Path) -> str:
     return source
 
 
+def _read_positive_env(name: str, default: str) -> float:
+    raw = os.getenv(name, default)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ReviewError(f"{name} precisa ser um número positivo.") from exc
+    if value <= 0:
+        raise ReviewError(f"{name} precisa ser maior que zero.")
+    return value
+
+
+def load_api_retry_settings() -> tuple[int, float, float]:
+    """Lê o limite de tentativas e os tempos de espera progressiva."""
+    max_attempts = int(_read_positive_env("GEMINI_MAX_ATTEMPTS", str(DEFAULT_API_MAX_ATTEMPTS)))
+    if max_attempts < 1:
+        raise ReviewError("GEMINI_MAX_ATTEMPTS precisa ser maior que zero.")
+    initial_delay_s = _read_positive_env(
+        "GEMINI_RETRY_INITIAL_DELAY_S", str(DEFAULT_API_RETRY_INITIAL_DELAY_S)
+    )
+    max_delay_s = _read_positive_env(
+        "GEMINI_RETRY_MAX_DELAY_S", str(DEFAULT_API_RETRY_MAX_DELAY_S)
+    )
+    if max_delay_s < initial_delay_s:
+        raise ReviewError(
+            "GEMINI_RETRY_MAX_DELAY_S precisa ser maior ou igual a GEMINI_RETRY_INITIAL_DELAY_S."
+        )
+    return max_attempts, initial_delay_s, max_delay_s
+
+
+def is_retryable_api_failure(exc: BaseException) -> bool:
+    """Indica falhas temporárias da API, como 503, 429 ou erros de rede."""
+    if isinstance(exc, errors.APIError):
+        code = getattr(exc, "code", None)
+        return isinstance(code, int) and code in RETRYABLE_HTTP_STATUS_CODES
+    if isinstance(exc, errors.UnknownApiResponseError):
+        return True
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    httpx_module = getattr(errors, "httpx", None)
+    if httpx_module is not None:
+        retryable_types = tuple(
+            getattr(httpx_module, name)
+            for name in ("TimeoutException", "NetworkError", "RemoteProtocolError")
+            if getattr(httpx_module, name, None) is not None
+        )
+        if retryable_types and isinstance(exc, retryable_types):
+            return True
+    return False
+
+
+def retry_wait_seconds(
+    failed_attempt: int, initial_delay_s: float, max_delay_s: float
+) -> float:
+    """Calcula espera progressiva (exponencial, com teto e variação leve)."""
+    wait = min(initial_delay_s * (2 ** (failed_attempt - 1)), max_delay_s)
+    return wait * random.uniform(0.5, 1.0)
+
+
+def wait_before_retry(
+    failed_attempt: int,
+    max_attempts: int,
+    initial_delay_s: float,
+    max_delay_s: float,
+    cause: BaseException,
+) -> None:
+    wait = retry_wait_seconds(failed_attempt, initial_delay_s, max_delay_s)
+    if isinstance(cause, errors.APIError) and getattr(cause, "code", None) is not None:
+        detail = f" código {cause.code}"
+    elif isinstance(cause, ReviewError):
+        detail = " resposta vazia"
+    else:
+        detail = f" {type(cause).__name__}"
+    print(
+        f"Falha temporária da API{detail} "
+        f"(tentativa {failed_attempt}/{max_attempts}). "
+        f"Nova tentativa em {wait:.1f}s.",
+        file=sys.stderr,
+    )
+    time.sleep(wait)
+
+
 def build_system_instruction(project_instructions: str) -> str:
     return (
         "Você é um agente de revisão estática de código Python. Siga as instruções "
@@ -167,22 +254,66 @@ def call_model(source_path: Path, source: str, system_instruction: str) -> Revie
         ensure_ascii=False,
     )
 
+    max_attempts, initial_delay_s, max_delay_s = load_api_retry_settings()
+
     try:
-        with genai.Client(api_key=api_key) as client:
-            response = client.models.generate_content(
-                model=model,
-                contents=request_content,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=ReviewResponse,
-                    max_output_tokens=8192,
-                ),
-            )
+        with genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
+        ) as client:
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=request_content,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            response_mime_type="application/json",
+                            response_schema=ReviewResponse,
+                            max_output_tokens=8192,
+                        ),
+                    )
+                except Exception as exc:
+                    if attempt < max_attempts and is_retryable_api_failure(exc):
+                        wait_before_retry(
+                            attempt,
+                            max_attempts,
+                            initial_delay_s,
+                            max_delay_s,
+                            exc,
+                        )
+                        continue
+                    raise
+
+                response_text = getattr(response, "text", None)
+                if response_text:
+                    try:
+                        return ReviewResponse.model_validate_json(response_text)
+                    except (ValidationError, ValueError) as exc:
+                        raise ReviewError(
+                            "A resposta do modelo não corresponde ao formato de relatório esperado."
+                        ) from exc
+
+                empty = ReviewError("A API Gemini não retornou um relatório em texto.")
+                if attempt < max_attempts:
+                    wait_before_retry(
+                        attempt,
+                        max_attempts,
+                        initial_delay_s,
+                        max_delay_s,
+                        empty,
+                    )
+                    continue
+                raise empty
+    except ReviewError:
+        raise
     except errors.APIError as exc:
         status_code = getattr(exc, "code", "desconhecido")
         raise ReviewError(
-            f"A API Gemini falhou (código {status_code}). Verifique a chave, o modelo e a conexão."
+            f"A API Gemini falhou após {max_attempts} tentativa(s) (código {status_code}). "
+            "Verifique a chave, o modelo e a conexão."
         ) from exc
     except Exception as exc:
         raise ReviewError(
@@ -190,15 +321,7 @@ def call_model(source_path: Path, source: str, system_instruction: str) -> Revie
             "Verifique a conexão e a configuração do modelo."
         ) from exc
 
-    response_text = getattr(response, "text", None)
-    if not response_text:
-        raise ReviewError("A API Gemini não retornou um relatório em texto.")
-    try:
-        return ReviewResponse.model_validate_json(response_text)
-    except (ValidationError, ValueError) as exc:
-        raise ReviewError(
-            "A resposta do modelo não corresponde ao formato de relatório esperado."
-        ) from exc
+    raise ReviewError("A API Gemini não retornou um relatório em texto.")
 
 
 def normalize_evidence(value: str) -> str:

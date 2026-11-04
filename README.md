@@ -81,14 +81,17 @@ python src/main.py arquivo.py --output relatorio.md
 | `GEMINI_API_KEY` ou `API_KEY` | Chave da API Gemini (obrigatória) | — |
 | `GEMINI_MODEL` | Modelo a usar na análise | `gemini-3.5-flash-lite` |
 | `MAX_FILE_SIZE_MB` | Tamanho máximo do arquivo em MB | `1` |
+| `GEMINI_MAX_ATTEMPTS` | Tentativas da API, incluindo a primeira | `4` |
+| `GEMINI_RETRY_INITIAL_DELAY_S` | Espera inicial em segundos após uma falha temporária | `1` |
+| `GEMINI_RETRY_MAX_DELAY_S` | Espera máxima entre tentativas, em segundos | `30` |
 
 - O código submetido é enviado à API Gemini e **não** é executado. Não envie arquivos que não possam ser compartilhados com esse serviço.
 - A chave é lida do `.env`. Não compartilhe nem versione esse arquivo.
+- Falhas temporárias da API (por exemplo 408, 429, 500, 502, 503 e 504) são repetidas até `GEMINI_MAX_ATTEMPTS`, com espera que dobra a cada tentativa até `GEMINI_RETRY_MAX_DELAY_S`. Erros permanentes, como chave inválida, não são repetidos.
 - O relatório é salvo em Markdown na pasta `reports/`, com severidade, linha, evidência, impacto e sugestão.
 
 ## Próximas melhorias
 
-- Definir tentativas limitadas e espera progressiva para falhas temporárias da API, como respostas 503.
 - Criar testes automatizados para leitura das regras, validação de linhas e evidências e geração do relatório. Usar respostas simuladas nos testes; deixar chamadas reais à API para verificações manuais opcionais.
 - Avaliar revisão em lote de vários arquivos.
 - Avaliar suporte a relatório JSON além do Markdown.
