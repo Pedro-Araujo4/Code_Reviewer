@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -49,6 +50,14 @@ class Finding(BaseModel):
 class ReviewResponse(BaseModel):
     summary: str = Field(min_length=1, max_length=1000)
     findings: list[Finding]
+
+
+@dataclass(frozen=True)
+class ReviewResult:
+    markdown: str
+    report_path: Path
+    findings: list[Finding]
+    rejected_count: int
 
 
 def load_project_instructions() -> str:
@@ -302,6 +311,36 @@ def render_report(
     return "\n".join(lines)
 
 
+def review_file(
+    file_argument: str | Path | None,
+    requested_output: str | None = None,
+) -> ReviewResult:
+    """Executa o fluxo compartilhado pela CLI e pela interface web."""
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+    source_path = resolve_source_file(
+        str(file_argument) if file_argument is not None else None
+    )
+    source = read_source(source_path)
+    project_instructions = load_project_instructions()
+    system_instruction = build_system_instruction(project_instructions)
+    review = call_model(source_path, source, system_instruction)
+    findings, rejected_count = validate_findings(review, source)
+    markdown = render_report(source_path, review, findings, rejected_count)
+
+    try:
+        output_path = report_path(source_path, requested_output)
+        output_path.write_text(markdown, encoding="utf-8")
+    except OSError as exc:
+        raise ReviewError("Não foi possível salvar o relatório Markdown.") from exc
+
+    return ReviewResult(
+        markdown=markdown,
+        report_path=output_path,
+        findings=findings,
+        rejected_count=rejected_count,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Analisa estaticamente um arquivo Python usando as regras do projeto."
@@ -319,23 +358,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    load_dotenv(PROJECT_ROOT / ".env", override=False)
     args = parse_args()
 
     try:
-        source_path = resolve_source_file(args.file)
-        source = read_source(source_path)
-        project_instructions = load_project_instructions()
-        system_instruction = build_system_instruction(project_instructions)
-
-        print(f"Analisando {source_path.name} com Gemini; o código não será executado.")
-        review = call_model(source_path, source, system_instruction)
-        findings, rejected_count = validate_findings(review, source)
-        output_path = report_path(source_path, args.output)
-        output_path.write_text(
-            render_report(source_path, review, findings, rejected_count),
-            encoding="utf-8",
-        )
+        print("Iniciando revisão com Gemini; o arquivo Python não será executado.")
+        result = review_file(args.file, args.output)
     except ReviewError as exc:
         print(f"Erro: {exc}", file=sys.stderr)
         return 1
@@ -343,10 +370,10 @@ def main() -> int:
         print(f"Erro ao salvar o relatório: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Relatório salvo em: {output_path}")
-    if rejected_count:
+    print(f"Relatório salvo em: {result.report_path}")
+    if result.rejected_count:
         print(
-            f"Aviso: {rejected_count} achado(s) foram descartados por falha de validação.",
+            f"Aviso: {result.rejected_count} achado(s) foram descartados por falha de validação.",
             file=sys.stderr,
         )
     return 0

@@ -37,15 +37,54 @@ O agente consulta as referências aplicáveis durante a análise. As regras deta
 - [Skill de análise geral](skills/analyze-code/SKILL.md)
 - [Skill de análise de segurança](skills/detect-security-issues/SKILL.md)
 
-## Configuração atual
+## Como usar
 
-- Interface de linha de comando; uma revisão analisa um arquivo `.py` por vez. Se nenhum caminho for informado, o programa usa o único arquivo Python em `input/`.
-- A análise usa a API Gemini, com `gemini-3.8-flash` como modelo padrão. O modelo pode ser configurado pela variável `GEMINI_MODEL`.
-- O código submetido é enviado à API Gemini e não é executado. Não envie arquivos que não possam ser compartilhados com esse serviço.
-- A chave é lida de `GEMINI_API_KEY` ou `API_KEY` no `.env`. Não compartilhe nem versione esse arquivo.
-- O tamanho máximo padrão é 1 MB e pode ser alterado por `MAX_FILE_SIZE_MB`.
+### Instalação
+
+O projeto requer **Python 3.10** ou superior.
+
+```bash
+pip install -r requirements.txt
+```
+
+Crie um arquivo `.env` na raiz do projeto com a chave da API Gemini:
+
+```
+GEMINI_API_KEY=sua_chave_aqui
+```
+
+### Interface web (Gradio)
+
+```bash
+python src/ui.py
+```
+
+Acesse `http://127.0.0.1:7860` no navegador. Na interface, faça upload de um arquivo `.py`, clique em **Revisar arquivo** e acompanhe a análise. Ao final, o relatório é exibido na página e pode ser baixado em Markdown.
+
+### Linha de comando (CLI)
+
+```bash
+# Revisão do único .py em input/
+python src/main.py
+
+# Revisão de um arquivo específico
+python src/main.py caminho/para/arquivo.py
+
+# Especificar o destino do relatório
+python src/main.py arquivo.py --output relatorio.md
+```
+
+## Configuração
+
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `GEMINI_API_KEY` ou `API_KEY` | Chave da API Gemini (obrigatória) | — |
+| `GEMINI_MODEL` | Modelo a usar na análise | `gemini-3.5-flash-lite` |
+| `MAX_FILE_SIZE_MB` | Tamanho máximo do arquivo em MB | `1` |
+
+- O código submetido é enviado à API Gemini e **não** é executado. Não envie arquivos que não possam ser compartilhados com esse serviço.
+- A chave é lida do `.env`. Não compartilhe nem versione esse arquivo.
 - O relatório é salvo em Markdown na pasta `reports/`, com severidade, linha, evidência, impacto e sugestão.
-- O projeto requer Python 3.10 ou superior. As dependências estão em [requirements.txt](requirements.txt).
 
 ## Próximas melhorias
 
