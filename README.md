@@ -37,11 +37,20 @@ O agente consulta as referências aplicáveis durante a análise. As regras deta
 - [Skill de análise geral](skills/analyze-code/SKILL.md)
 - [Skill de análise de segurança](skills/detect-security-issues/SKILL.md)
 
-## Decisões pendentes antes da implementação
+## Configuração atual
 
-- Forma de uso: linha de comando, interface web ou API.
-- Método de análise: modelo de IA, ferramentas estáticas ou combinação dos dois.
-- Formatos de entrada e saída do relatório, como Markdown ou JSON.
-- Versões de Python e tamanho máximo de arquivo suportados.
-- Uso de serviços externos e política para envio, retenção e proteção dos arquivos.
-- Dependências, configuração e forma de instalação do projeto.
+- Interface de linha de comando; uma revisão analisa um arquivo `.py` por vez. Se nenhum caminho for informado, o programa usa o único arquivo Python em `input/`.
+- A análise usa a API Gemini, com `gemini-3.8-flash` como modelo padrão. O modelo pode ser configurado pela variável `GEMINI_MODEL`.
+- O código submetido é enviado à API Gemini e não é executado. Não envie arquivos que não possam ser compartilhados com esse serviço.
+- A chave é lida de `GEMINI_API_KEY` ou `API_KEY` no `.env`. Não compartilhe nem versione esse arquivo.
+- O tamanho máximo padrão é 1 MB e pode ser alterado por `MAX_FILE_SIZE_MB`.
+- O relatório é salvo em Markdown na pasta `reports/`, com severidade, linha, evidência, impacto e sugestão.
+- O projeto requer Python 3.10 ou superior. As dependências estão em [requirements.txt](requirements.txt).
+
+## Próximas melhorias
+
+- Definir tentativas limitadas e espera progressiva para falhas temporárias da API, como respostas 503.
+- Criar testes automatizados para leitura das regras, validação de linhas e evidências e geração do relatório. Usar respostas simuladas nos testes; deixar chamadas reais à API para verificações manuais opcionais.
+- Avaliar revisão em lote de vários arquivos.
+- Avaliar suporte a relatório JSON além do Markdown.
+- Considerar ferramentas estáticas como complemento à análise da IA.
