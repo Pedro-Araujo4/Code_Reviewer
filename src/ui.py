@@ -41,9 +41,9 @@ def review_upload(uploaded_file: str | None, progress: gr.Progress = gr.Progress
     progress(0.9, desc="Gerando relatório…")
 
     status_parts = [f"\n\n---\n\n✅ Relatório salvo em `{result.report_path.name}`."]
-    if result.rejected_count:
+    if result.unlocated_count:
         status_parts.append(
-            f"⚠️ {result.rejected_count} achado(s) descartados por falha de validação."
+            f"⚠️ {result.unlocated_count} achado(s) exibidos como gerais, sem linha confirmada."
         )
 
     progress(1.0, desc="Concluído!")

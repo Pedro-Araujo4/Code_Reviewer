@@ -14,9 +14,11 @@ Agente para revisar arquivos Python, apontar problemas comprováveis e sugerir m
 O relatório deve ser simples e direto. Para cada achado, informa:
 
 - Severidade: crítica, alta, média ou baixa.
-- Localização: arquivo e linha, quando disponíveis.
+- Localização: arquivo e linha, quando a evidência puder ser vinculada ao código. Se a linha exata não for confirmada, o achado é exibido mesmo assim, como geral.
 - Evidência e impacto, em poucas palavras.
-- Sugestão de melhoria.
+- Sugestão de correção.
+
+Em seguida, o relatório inclui uma seção **Possíveis melhorias**, com sugestões opcionais como refatoração, legibilidade, manutenção, desempenho ou testes. Essas melhorias não são tratadas como defeitos.
 
 Se não houver achados relevantes, o agente informa isso e resume brevemente o escopo revisado.
 
@@ -88,7 +90,7 @@ python src/main.py arquivo.py --output relatorio.md
 - O código submetido é enviado à API Gemini e **não** é executado. Não envie arquivos que não possam ser compartilhados com esse serviço.
 - A chave é lida do `.env`. Não compartilhe nem versione esse arquivo.
 - Falhas temporárias da API (por exemplo 408, 429, 500, 502, 503 e 504) são repetidas até `GEMINI_MAX_ATTEMPTS`, com espera que dobra a cada tentativa até `GEMINI_RETRY_MAX_DELAY_S`. Erros permanentes, como chave inválida, não são repetidos.
-- O relatório é salvo em Markdown na pasta `reports/`, com severidade, linha, evidência, impacto e sugestão.
+- O relatório é salvo em Markdown na pasta `reports/`, com achados (severidade, linha, evidência, impacto e correção) e uma seção de possíveis melhorias, como refatoração.
 
 ## Próximas melhorias
 

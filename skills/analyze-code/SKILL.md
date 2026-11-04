@@ -25,7 +25,8 @@ Consider, when applicable: undefined or misspelled names; incorrect return value
 
 ## Reporting
 
-- Report only actionable findings supported by the code or project rules. For each one, provide severity (critical, high, medium, or low), location, what can go wrong, and a concrete improvement.
+- Report only actionable findings supported by the code or project rules. For each one, provide severity (critical, high, medium, or low), location, what can go wrong, and a concrete fix.
+- Separately suggest optional improvements such as refactoring, readability, or tests when they would reduce maintenance cost without being defects. Do not repeat a finding as an improvement.
 - Order findings by impact. Keep separate findings separate when their causes or fixes differ; combine duplicates.
 - Distinguish confirmed defects from context-dependent concerns. State the missing assumption when it affects the conclusion.
 - Do not present style preferences as defects. If no material issue is found, say so and briefly state what was reviewed.

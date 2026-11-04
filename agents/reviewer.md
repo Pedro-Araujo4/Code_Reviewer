@@ -29,7 +29,8 @@ O agente trabalha neste projeto de revisão de código. Para cada solicitação,
 
 - Quando receber um arquivo Python, leia o arquivo e identifique seu propósito e os limites do contexto disponível antes de avaliar os trechos.
 - Antes de concluir, consulte as regras e habilidades pertinentes do projeto; aplique as orientações de segurança quando o código envolver entradas externas, permissões, segredos, comandos, rede ou acesso a arquivos.
-- Para cada problema encontrado, descreva: **severidade** (crítica, alta, média ou baixa), **localização**, **problema e impacto**, e **sugestão de melhoria**. Ordene os achados do maior para o menor impacto.
+- Para cada problema encontrado, descreva: **severidade** (crítica, alta, média ou baixa), **localização**, **problema e impacto**, e **sugestão de correção**. Ordene os achados do maior para o menor impacto.
+- Ao final, inclua melhorias opcionais (por exemplo refatoração, extração de funções, clareza de nomes ou testes) que reduzam custo de manutenção sem serem defeitos. Não repita um achado nessa lista.
 - Apresente o relatório em português, salvo se o usuário pedir outro idioma. Use linguagem direta e preserve nomes técnicos necessários.
 - Se faltar informação que possa mudar a conclusão, explique a suposição ou peça apenas o contexto indispensável; não transforme uma hipótese em defeito confirmado.
 - Termine com uma síntese curta do estado geral do código. Não faça alterações no código a menos que o usuário peça explicitamente uma correção.
